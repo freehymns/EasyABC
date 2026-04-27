@@ -127,6 +127,8 @@ from music_score_panel import MusicScorePanel
 from svgrenderer import SvgRenderer
 import itertools
 from aligner import align_lines, extract_incipit, bar_sep, bar_sep_without_space, get_bar_length, bar_and_voice_overlay_sep
+sys.path.append("format_abc")
+import format_abc
 if sys.version_info >= (3,0,0):
     from queue import Queue # 1.3.6.2 [JWdJ] 2015-02
 else:
@@ -4747,7 +4749,7 @@ class MainFrame(wx.Frame):
     def OnToolRecord(self, evt):
         if self.record_thread and self.record_thread.is_running:
             self.record_thread.abort()
-            self.record_thread = None		#EPO prevent segmentation error (undefined variable)
+            self.record_thread = None        #EPO prevent segmentation error (undefined variable)
         else:
             midi_in_device_ID = self.settings.get('midi_device_in', None)
             if midi_in_device_ID is None:
@@ -5253,6 +5255,32 @@ class MainFrame(wx.Frame):
         finally:
             dlg.Destroy() # 1.3.6.3 [JWDJ] 2015-04-21 always clean up dialog window
 
+    def OnSplitMusicLines(self, evt):
+        lines = text_to_lines(self.editor.GetText())
+        new_lines = format_abc.format_abc(lines, True, None)
+        self.editor.BeginUndoAction()
+        self.editor.SetText(os.linesep.join(new_lines))
+        self.editor.EndUndoAction()
+        
+    def OnJoinMusicLines(self, evt):
+        lines = text_to_lines(self.editor.GetText())
+        new_lines = format_abc.format_abc(lines, False, None)
+        self.editor.BeginUndoAction()
+        self.editor.SetText(os.linesep.join(new_lines))
+        self.editor.EndUndoAction()
+        
+    def OnToggleScoreInstruction(self, evt):
+        lines = text_to_lines(self.editor.GetText())
+        new_lines = []
+        for line in lines:
+            if line[1:7] == ":score":
+                new_lines.append(("%" if line[0] == "I" else "I") + line[1:])
+            else:
+                new_lines.append(line)
+        self.editor.BeginUndoAction()
+        self.editor.SetText(os.linesep.join(new_lines))
+        self.editor.EndUndoAction()
+        
     def OnRenumberTunes(self, evt):
         dlg = wx.TextEntryDialog(
             self, _('Please specify the index of the first tune: '), _('Renumber X: fields'), '1')
@@ -6063,7 +6091,7 @@ class MainFrame(wx.Frame):
 
         if self.record_thread != None:
             self.record_thread.abort()
-            self.record_thread = None	#[EPO] 2018-11-20 prevent segmentation error (undefined variable)
+            self.record_thread = None    #[EPO] 2018-11-20 prevent segmentation error (undefined variable)
         return True
 
     def OnNew(self, evt=None):
@@ -6433,7 +6461,7 @@ class MainFrame(wx.Frame):
         self.recent_menu = create_menu([], parent=self)
 
         menuBar = create_menu_bar([
-            (_("&File")     , [
+            (_("&File"), [
                 (_('&New') + '\tCtrl+N', _("Create a new file"), self.OnNew, self.disable_in_exclusive_mode),
                 (_('&Open...') + '\tCtrl+O', _("Open an existing file"), self.OnOpen, self.disable_in_exclusive_mode),
                 (_("&Close") + '\tCtrl+W', _("Close the current file"), self.OnCloseFile, self.disable_in_exclusive_mode),
@@ -6471,7 +6499,7 @@ class MainFrame(wx.Frame):
                 (_('&Recent files'), self.recent_menu, self.disable_in_exclusive_mode),
                 (),
                 (wx.ID_EXIT, _("&Quit") + "\tCtrl+Q", _("Exit the application (prompt to save files)"), self.OnQuit)]),
-            (_("&Edit")     , [
+            (_("&Edit"), [
                 (_("&Undo") + "\tCtrl+Z", _("Undo the last action"), self.OnUndo),
                 (_("&Redo") + "\tCtrl+Y", _("Redo the last action"), self.OnRedo),
                 (),
@@ -6504,20 +6532,23 @@ class MainFrame(wx.Frame):
                 (),
                 (_('&Clear cache') + '...', '', self.OnClearCache), #1.3.6.1 [SS] 2015-1-10 do not use 5003 (on Linux it will add Ctr-S shortcut)
                 (_('Cold &restart'), '', self.OnColdRestart)]), # 1.3.6.1 [SS] 2014-12-28
-            (_("&Tools")    , [
+            (_("&Tools"), [
                 (_('Generate &incipits file...'), '', self.OnGenerateIncipits),
                 (_('&View incipits...'), '', self.OnViewIncipits),
                 (),
                 (_('&Renumber X: fields...'), '', self.OnRenumberTunes),
-                (_('&Sort tunes...'), '', self.OnSortTunes)]),
-            (_("&View")     , view_menu),
+                (_('&Sort tunes...'), '', self.OnSortTunes),
+                (_('Toggle score instruction'), '', self.OnToggleScoreInstruction),
+                (_('Split music lines'), '', self.OnSplitMusicLines),
+                (_('Join music lines'), '', self.OnJoinMusicLines)]),
+            (_("&View"), view_menu),
             (_("&Internals"), [ #p09 [SS] 2014-10-22
                 (_("Messages"), _("Show warnings and errors"), self.OnShowMessages),
                 (_("Input processed tune"), '', self.OnShowAbcTune),
                 (_("List of Tunes"), '', self.OnShowTunesList),
                 (_("Output midi file"), '', self.OnShowMidiFile),
                 (_("Show settings status"), '', self.OnShowSettings)]),
-            (_("&Help")     , [
+            (_("&Help"), [
                 (_("&Show fields and commands reference"), '', self.OnViewFieldReference),
                 (),
                 (_("&EasyABC Help"), _("Link to EasyABC Website"), self.OnEasyABCHelp),
@@ -9306,7 +9337,7 @@ class MyApp(wx.App):
         L.sort(key=lambda f: not f.IsActive()) # make sure an active frame comes first in the list
         return L
 
-    def MacOpenFile(self, filename):	# [EPO] 2018-11-20 TODO  dup open file creates two frames (why?)
+    def MacOpenFile(self, filename):    # [EPO] 2018-11-20 TODO  dup open file creates two frames (why?)
         """Called for files dropped on dock icon, or opened via finders context menu"""
         #dlg = wx.MessageDialog(None,
         #                       "This app was just asked to open:\n%s\n"%filename,

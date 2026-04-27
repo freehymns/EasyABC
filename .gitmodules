@@ -1,0 +1,3 @@
+[submodule "format_abc"]
+	path = format_abc
+	url = git@github.com:freehymns/format_abc.git
